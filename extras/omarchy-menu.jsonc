@@ -1,0 +1,11 @@
+// Mocchi — Omarchy menu entry.
+//
+// Paste this into ~/.config/omarchy/extensions/omarchy-menu.jsonc, inside the
+// existing top-level object (keep the other entries and their commas). It adds
+// "Ask Mocchi" under the Learn submenu and to the menu search.
+"learn.mocchi": {
+  "icon": "\uf075",
+  "label": "Ask Mocchi",
+  "description": "Ask a question and open your coding agent",
+  "action": "\"$HOME/.config/omarchy/plugins/io.github.signaldirective.mocchi/scripts/mocchi-ask\""
+}

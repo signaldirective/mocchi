@@ -1,0 +1,2 @@
+# Never commit the OpenCode config backup that install.sh makes next to it.
+*.mocchi.bak

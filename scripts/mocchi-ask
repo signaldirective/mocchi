@@ -1,0 +1,83 @@
+#!/bin/bash
+# mocchi-ask — ask one question, then hand it to the user's coding agent.
+#
+# This is the whole brain of Mocchi. The bar icon, the greeting notification,
+# the keybinding, and the Omarchy menu entry all call this one script, so they
+# behave identically.
+#
+# Flow:
+#   1. Open Omarchy's native text-input box ("What can I help you with?").
+#   2. If an Omarchy default agent is set, launch it with the question sent.
+#   3. If none is set, open a *free* OpenCode session (Big Pickle) so a brand
+#      new user gets a real answer with zero setup. Nothing is persisted.
+
+set -euo pipefail
+
+readonly PROMPT_LABEL="What can I help you with?"
+readonly FREE_MODEL="opencode/big-pickle"
+readonly AGENT_APP_ID="org.omarchy.agent"
+readonly STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/mocchi"
+
+notify() {
+  command -v omarchy-notification-send >/dev/null 2>&1 &&
+    omarchy-notification-send "Mocchi" "$1" || true
+}
+
+if ! command -v omarchy >/dev/null 2>&1; then
+  notify "Mocchi needs Omarchy's 'omarchy' command on PATH."
+  exit 1
+fi
+
+# 1. Ask. Cancel (Esc) or a blank answer exits quietly.
+answer=""
+answer=$(omarchy menu input "$PROMPT_LABEL" --width 520) || exit 0
+
+# Trim surrounding whitespace without spawning a process.
+answer="${answer#"${answer%%[![:space:]]*}"}"
+answer="${answer%"${answer##*[![:space:]]}"}"
+[[ -n $answer ]] || exit 0
+
+# The user has engaged; a "once" greeting can stop now.
+mkdir -p -m 0700 "$STATE_DIR" && : >"$STATE_DIR/used"
+
+# 2. Preferred path: the user's chosen Omarchy agent (opencode, claude, codex,
+#    crush, ...). `omarchy agent prompt` owns every per-agent detail — which
+#    flags pre-approve, how the prompt is passed, how the terminal opens — so
+#    Mocchi never hard-codes an agent and always honours the user's choice.
+agent=$(omarchy default agent 2>/dev/null || true)
+
+# A default the user cannot actually run would dead-end them: `omarchy agent
+# prompt` exits before anything opens. Treat that the same as no default and
+# fall through to the free session, so a mis-set or never-installed agent still
+# gets them an answer instead of an error.
+if [[ -n $agent ]] && ! command -v "$agent" >/dev/null 2>&1; then
+  notify "'${agent}' is not installed. Opening a free OpenCode session instead."
+  agent=""
+fi
+
+if [[ -n $agent ]]; then
+  # Keep the launcher's own stderr for two reasons: surface the first line in
+  # the toast (a bare "could not launch" explains nothing), and keep the whole
+  # thing in the journal, where the launcher's diagnostics belong.
+  err_file=$(mktemp)
+  trap 'rm -f "$err_file"' EXIT
+  if ! omarchy agent prompt "$answer" 2>"$err_file"; then
+    detail=$(head -n 1 "$err_file" 2>/dev/null || true)
+    cat "$err_file" >&2
+    notify "Could not launch '${agent}'. ${detail:-Try: omarchy default agent <name>}"
+  fi
+  exit 0
+fi
+
+# 3. No usable default agent. Give them OpenCode on the free Big Pickle model.
+#    This is session-only: once they choose a working default agent, step 2
+#    takes over.
+if ! command -v opencode >/dev/null 2>&1; then
+  # No OpenCode at all — let them choose and install something instead.
+  exec omarchy menu summon setup.default.agent
+fi
+
+if ! omarchy-launch-tui --app-id="$AGENT_APP_ID" \
+  opencode mini --model "$FREE_MODEL" --prompt "$answer"; then
+  notify "Could not open the free OpenCode session. Is 'opencode' installed?"
+fi

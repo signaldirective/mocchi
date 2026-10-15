@@ -1,0 +1,55 @@
+#!/bin/bash
+# mocchi-greet — introduce Mocchi so people notice the new bar icon.
+#
+# Called by the bar widget when the shell mounts it (a shell start or restart,
+# and once per plugin hot-reload). It is deliberately quiet: a low-urgency
+# toast that goes away on its own, and clicking it opens the same ask box the
+# bar icon opens.
+#
+# Frequency is controlled by the widget's `greeting` setting, passed as $1:
+#   on-restart (default) - greet on every shell start, at most once per 6 hours
+#   once                 - greet until the user has asked something, then stop
+#   off                  - never
+
+set -euo pipefail
+
+mode="${1:-on-restart}"
+[[ $mode == off ]] && exit 0
+
+self_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+helper="$self_dir/mocchi-ask"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/mocchi"
+used_marker="$state_dir/used"
+last_marker="$state_dir/last-greeting"
+
+command -v omarchy-notification-send >/dev/null 2>&1 || exit 0
+
+# "once": stop for good after the user has actually asked something.
+[[ $mode == once && -e $used_marker ]] && exit 0
+
+# The widget mounts once per monitor and on every code reload; the timestamp
+# keeps a single logical shell start from greeting more than once. "on-restart"
+# also spaces greetings out so a day of shell restarts is not a day of toasts.
+now=$(date +%s)
+window=300
+[[ $mode == on-restart ]] && window=21600
+if [[ -f $last_marker ]]; then
+  last=$(cat "$last_marker" 2>/dev/null || echo 0)
+  [[ $last =~ ^[0-9]+$ ]] || last=0
+  (( now - last < window )) && exit 0
+fi
+
+mkdir -p -m 0700 "$state_dir"
+printf '%s\n' "$now" >"$last_marker"
+
+# Clicking the toast runs the ask box directly. The notification service runs
+# this argv without a shell, so name `bash` explicitly: that keeps the click
+# working even if the script's executable bit did not survive a copy or a git
+# checkout mode slip.
+omarchy-notification-send \
+  --app-name mocchi \
+  -g $'\uf075' \
+  -u low \
+  "Hi, I'm Mocchi!" \
+  "You can ask me anything. Click here." \
+  --exec bash "$helper"

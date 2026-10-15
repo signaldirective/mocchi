@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.signaldirective.mocchi",
+  "name": "Mocchi",
+  "version": "1.0.0",
+  "author": "Signal Directive",
+  "license": "MIT",
+  "description": "A quiet bar icon that asks \"What can I help you with?\" and opens a coding-agent session with your question already sent.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Mocchi",
+    "description": "Ask a question and hand it to your coding agent. Uses your Omarchy default agent, or a free OpenCode model when none is set.",
+    "category": "AI",
+    "defaultSection": "right",
+    "allowMultiple": false,
+    "defaults": {
+      "icon": "\uf075",
+      "tooltip": "Ask mocchi",
+      "greeting": "on-restart"
+    },
+    "schema": [
+      {
+        "key": "icon",
+        "type": "string",
+        "label": "Icon glyph",
+        "defaultValue": "\uf075",
+        "description": "Nerd Font glyph shown in the bar."
+      },
+      {
+        "key": "tooltip",
+        "type": "string",
+        "label": "Tooltip",
+        "defaultValue": "Ask mocchi",
+        "description": "Text shown when you hover the icon."
+      },
+      {
+        "key": "greeting",
+        "type": "enum",
+        "label": "Greeting notification",
+        "options": ["on-restart", "once", "off"],
+        "defaultValue": "on-restart",
+        "description": "\"Hi, I'm Mocchi!\" toast that opens the ask box when clicked. on-restart: at every shell start (at most once per 6 hours). once: until you first ask something. off: never."
+      }
+    ]
+  }
+}
