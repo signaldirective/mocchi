@@ -19,7 +19,8 @@
     "defaults": {
       "icon": "\uf075",
       "tooltip": "Ask mocchi",
-      "greeting": "on-restart"
+      "greeting": "on-restart",
+      "skill": "auto"
     },
     "schema": [
       {
@@ -43,6 +44,14 @@
         "options": ["on-restart", "once", "off"],
         "defaultValue": "on-restart",
         "description": "\"Hi, I'm Mocchi!\" toast that opens the ask box when clicked. on-restart: at every shell start (at most once per 6 hours). once: until you first ask something. off: never."
+      },
+      {
+        "key": "skill",
+        "type": "enum",
+        "label": "Bundled skill",
+        "options": ["auto", "off"],
+        "defaultValue": "auto",
+        "description": "auto: link the bundled Omarchy + triage skill into ~/.agents/skills and register its always-on digest. off: leave the skill alone."
       }
     ]
   }

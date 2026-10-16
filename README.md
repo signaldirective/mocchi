@@ -44,18 +44,16 @@ needs `--yes`):
 omarchy plugin add https://github.com/signaldirective/mocchi --enable --yes
 ```
 
-Then wire up the bundled skill and the always-on instructions:
+That is the whole install — there is no installer script. When the shell first
+mounts the widget, Mocchi wires up its bundled skill itself: a symlink at
+`~/.agents/skills/mocchi` (the shared skills directory OpenCode discovers, and
+the same place Omarchy links its own `omarchy` and `diagnose-crash` skills) plus
+one always-on `instructions` entry in `~/.config/opencode/opencode.json`, backed
+up as `.mocchi.bak` before the first edit.
 
-```bash
-~/.config/omarchy/plugins/io.github.signaldirective.mocchi/scripts/install.sh
-```
-
-`install.sh` links the bundled skill into `~/.agents/skills/mocchi` — the shared
-skills directory OpenCode discovers, and the same place Omarchy installs its own
-`omarchy` and `diagnose-crash` skills — then points OpenCode's `instructions` at
-the skill's always-on digest. It edits only `~/.config/opencode/opencode.json`,
-leaving a `.mocchi.bak` first. Because the skill is a symlink into the plugin,
-`omarchy plugin update` keeps it current.
+Both steps are idempotent and never overwrite an existing link or file. Turn
+them off with the `skill` option in the bar settings (see [Use](#use)). Because
+the skill is a symlink into the plugin, `omarchy plugin update` keeps it current.
 
 If the icon did not land where you want it:
 
@@ -78,8 +76,10 @@ mkdir -p "$dest"
 cp -r manifest.json BarWidget.qml scripts skills extras "$dest/"
 omarchy-shell shell rescanPlugins
 omarchy plugin enable "$id" --section right
-"$dest/scripts/install.sh"
 ```
+
+There is nothing else to run: the skill link is created the first time the shell
+mounts the widget.
 
 ## Remove
 
@@ -87,16 +87,16 @@ omarchy plugin enable "$id" --section right
 omarchy plugin remove io.github.signaldirective.mocchi
 ```
 
-That deletes the plugin directory and its bar icon. The bundled skill is wired
-up separately, so undo that too:
+That deletes the plugin directory and its bar icon. The skill wiring lives
+outside the plugin, so undo that too:
 
 ```bash
 rm -f ~/.agents/skills/mocchi
 ```
 
-`install.sh` also added a single `instructions` entry to
-`~/.config/opencode/opencode.json`. Restore the backup it made on its first run
-(or delete the `…/mocchi/instructions.md` entry by hand):
+The first run also added a single `instructions` entry to
+`~/.config/opencode/opencode.json`. Restore the backup it took then (or delete
+the `…/mocchi/instructions.md` entry by hand):
 
 ```bash
 mv ~/.config/opencode/opencode.json.mocchi.bak ~/.config/opencode/opencode.json
@@ -120,6 +120,14 @@ small greeting toast. Clicking it opens the same ask box. Control it with the
 | `on-restart` *(default)* | Greet on every shell start, at most once every 6 hours |
 | `once` | Greet until you ask something for the first time, then stop |
 | `off` | Never greet |
+
+The bundled skill is wired up on first load. If you would rather Mocchi left
+your agent configuration alone, set `skill` to `off`:
+
+| `skill` | Behaviour |
+|---|---|
+| `auto` *(default)* | Link the skill into `~/.agents/skills/mocchi` and register its always-on digest |
+| `off` | Do neither; the ask box still works exactly the same |
 
 ### Other ways to open it
 
@@ -187,17 +195,17 @@ Mocchi): the manifest exposes `icon`, `tooltip`, and `greeting`.
 - **A coding agent** — whichever you set with `omarchy default agent` (OpenCode,
   Claude Code, Codex, Crush, …). With none set, Mocchi falls back to a free
   OpenCode session, so OpenCode is the only soft requirement.
-- **`jq`** — used by `scripts/install.sh` to add the skill's `instructions`
-  entry. Nothing else needs it.
+- **`jq`** — used on first load to add the skill's `instructions` entry. Without
+  it the skill still links; only the always-on digest is skipped.
 
 ## Security notes
 
 Omarchy shell plugins run as your user inside the long-lived `omarchy-shell`
 process and are **not** sandboxed. Mocchi is deliberately small: the bar widget
 only launches a local script, and the script only calls `omarchy` and
-`opencode`. It uses no `sudo`, no `eval`, opens no network connections of its
-own, and never executes your typed text as a command — it is passed to your agent
-as a single argument.
+`opencode`. No sudo or pkexec is required. It never runs `eval`, opens no network
+connections of its own, and never executes your typed text as a command — it is
+passed to your agent as a single argument.
 
 **Your agent runs with permissions pre-approved.** That is Omarchy's own
 behaviour: `omarchy agent prompt` launches every agent with its "don't stop to
@@ -218,8 +226,10 @@ visible to other processes of your user via `ps`, and it is sent to whichever
 model your agent uses (for the free fallback, to OpenCode's hosted Big Pickle
 model). Mocchi itself never stores, logs, or transmits it.
 
-`install.sh` is the only piece that writes outside the plugin directory, and only
-to `~/.config/opencode/opencode.json` (after a `.mocchi.bak` backup).
+The skill wiring described under [Install](#install) is the only thing that
+writes outside the plugin directory, and only into `~/.agents/skills/mocchi` (a
+symlink) and `~/.config/opencode/opencode.json` (one `instructions` entry, after
+a `.mocchi.bak` backup).
 
 ## Development
 
@@ -247,7 +257,8 @@ dest="$HOME/.config/omarchy/plugins/io.github.signaldirective.mocchi"
 rsync -a --delete --exclude .git "$src/" "$dest/"
 ```
 
-Re-run `"$dest/scripts/install.sh"` only if the skill files changed.
+`mocchi-start` re-checks the skill link on every shell start, so re-syncing needs
+no other step.
 
 ## Attribution
 

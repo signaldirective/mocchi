@@ -1,2 +1,2 @@
-# Never commit the OpenCode config backup that install.sh makes next to it.
+# Backup the plugin makes next to the OpenCode config before its first edit.
 *.mocchi.bak

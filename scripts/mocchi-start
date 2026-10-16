@@ -1,0 +1,84 @@
+#!/bin/bash
+# mocchi-start — first-load wiring, then (optionally) the greeting toast.
+#
+# Omarchy plugins are plain checkouts with no installer step, so Mocchi does its
+# own tiny setup when the shell mounts the widget. It is deliberately small and
+# safe to run on every shell start:
+#
+#   1. Links the bundled skill into ~/.agents/skills/mocchi so OpenCode (and
+#      other agents) discover it — the same way Omarchy wires its own `omarchy`
+#      and `diagnose-crash` skills. An existing link or file is never touched.
+#   2. Adds the skill's always-on digest to OpenCode's `instructions`, but only
+#      when it is missing, and only after backing the config up.
+#
+# Then it may say hello, per the widget's `greeting` setting.
+#
+# $1 = greeting mode (on-restart | once | off)
+# $2 = skill wiring  (auto | off)
+
+set -euo pipefail
+
+mode="${1:-on-restart}"
+skill="${2:-auto}"
+
+self_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+plugin_dir=$(dirname -- "$self_dir")
+skill_dir="$plugin_dir/skills/mocchi"
+helper="$self_dir/mocchi-ask"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/mocchi"
+used_marker="$state_dir/used"
+last_marker="$state_dir/last-greeting"
+
+# --- 1. make the bundled skill discoverable --------------------------------
+link="$HOME/.agents/skills/mocchi"
+if [[ $skill != off && -f $skill_dir/SKILL.md ]]; then
+  mkdir -p "$(dirname "$link")"
+  if [[ ! -e $link && ! -L $link ]]; then
+    ln -s "$skill_dir" "$link"
+  fi
+fi
+
+# --- 2. keep the always-on digest registered -------------------------------
+instructions="$link/instructions.md"
+config="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/opencode.json"
+if [[ $skill != off && -f $instructions && -f $config ]] &&
+  command -v jq >/dev/null 2>&1 &&
+  jq -e . "$config" >/dev/null 2>&1 &&
+  ! jq -e --arg i "$instructions" '(.instructions // []) | index($i)' "$config" >/dev/null 2>&1; then
+  [[ -f $config.mocchi.bak ]] || cp -n "$config" "$config.mocchi.bak" 2>/dev/null || true
+  tmp=$(mktemp)
+  if jq --arg i "$instructions" \
+    '.instructions = (((.instructions // []) + [$i]) | unique)' "$config" >"$tmp"; then
+    # Write in place so the file's permissions survive and a symlinked config
+    # (common with dotfile managers) is followed rather than replaced.
+    cat "$tmp" >"$config"
+  fi
+  rm -f "$tmp"
+fi
+
+# --- 3. optionally say hello ------------------------------------------------
+[[ $mode == off ]] && exit 0
+command -v omarchy-notification-send >/dev/null 2>&1 || exit 0
+[[ $mode == once && -e $used_marker ]] && exit 0
+
+now=$(date +%s)
+window=300
+[[ $mode == on-restart ]] && window=21600
+if [[ -f $last_marker ]]; then
+  last=$(cat "$last_marker" 2>/dev/null || echo 0)
+  [[ $last =~ ^[0-9]+$ ]] || last=0
+  (( now - last < window )) && exit 0
+fi
+
+mkdir -p -m 0700 "$state_dir"
+printf '%s\n' "$now" >"$last_marker"
+
+# The notification service runs this argv without a shell, so name `bash`
+# explicitly: that keeps the click working however the file mode landed.
+omarchy-notification-send \
+  --app-name mocchi \
+  -g $'\uf075' \
+  -u low \
+  "Hi, I'm Mocchi!" \
+  "You can ask me anything. Click here." \
+  --exec bash "$helper"
