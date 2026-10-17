@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.signaldirective.mocchi",
   "name": "Mocchi",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Signal Directive",
   "license": "MIT",
   "description": "A quiet bar icon that asks \"What can I help you with?\" and opens a coding-agent session with your question already sent.",
@@ -43,7 +43,7 @@
         "label": "Greeting notification",
         "options": ["on-restart", "once", "off"],
         "defaultValue": "on-restart",
-        "description": "\"Hi, I'm Mocchi!\" toast that opens the ask box when clicked. on-restart: at every shell start (at most once per 6 hours). once: until you first ask something. off: never."
+        "description": "\"Hi, I'm Mocchi!\" toast that opens the ask box when clicked. on-restart: at every shell start (at most once per 6 hours). once: until you first ask something. off: never. Right-click the bar icon to silence it for this login session or for good."
       },
       {
         "key": "skill",

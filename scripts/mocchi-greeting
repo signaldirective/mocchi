@@ -1,0 +1,126 @@
+#!/bin/bash
+# mocchi-greeting — the one place that knows whether Mocchi may say hello.
+#
+# The greeting is a nudge, so it has to be easy to switch off, and the switch
+# has to mean what it says. Everything that reads or writes greeting state
+# lands here: the shell-start path asks it to `show`, and the widget's
+# right-click menu drives `session`, `never` and `restore`.
+#
+#   show <mode>   decide whether it is time to say hello, then send the toast
+#   dismiss       close the toast now, change nothing
+#   session       close it and stay quiet until this login session ends
+#   never         close it and stay quiet for good
+#   restore       forget both silences, so a later `show` may greet again
+#
+# State lives in $XDG_STATE_HOME/omarchy/mocchi:
+#   used             someone has asked a question ("once" stops here)
+#   last-greeting    unix time of the last toast (throttles "on-restart")
+#   hidden-session   the login session the user silenced
+#   greeting-off     the user said "don't show again"
+#
+# `never` is also written into the widget setting (Plugins -> Mocchi ->
+# Greeting), because that is the copy a user can see and change. This marker is
+# the fallback that keeps the promise even when shell.json cannot be saved,
+# which is exactly what happens on bars owned by a layout plugin.
+
+set -euo pipefail
+
+readonly SUMMARY="Hi, I'm Mocchi!"
+readonly DETAIL="You can ask me anything. Click here."
+readonly GLYPH=$'\uf075'
+
+self_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+ask_helper="$self_dir/mocchi-ask"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/mocchi"
+used_marker="$state_dir/used"
+last_marker="$state_dir/last-greeting"
+hidden_marker="$state_dir/hidden-session"
+off_marker="$state_dir/greeting-off"
+
+# The toast is an ordinary Omarchy notification, so Omarchy's own dismiss
+# command can find it by its summary. Missing on an older Omarchy: the toast
+# simply stays until it times out, which is what it always did.
+dismiss() {
+  command -v omarchy >/dev/null 2>&1 || return 0
+  omarchy notification dismiss "$SUMMARY" >/dev/null 2>&1 || true
+}
+
+# "This session" means this login session — XDG_SESSION_ID, which survives a
+# shell restart and ends when the user logs out. A session that reports no id
+# gets no recorded silence: the choice degrades to plain `dismiss` rather than
+# guessing at a key, because a wrong key would silence Mocchi for longer than
+# the user asked.
+session_key() {
+  printf '%s' "${XDG_SESSION_ID:-}"
+}
+
+show() {
+  local mode="${1:-on-restart}"
+  local key now window last
+
+  [[ $mode == off ]] && return 0
+  command -v omarchy-notification-send >/dev/null 2>&1 || return 0
+
+  # Someone asking for quiet outranks the mode: check both silences first.
+  [[ -e $off_marker ]] && return 0
+  key=$(session_key)
+  if [[ -n $key && -f $hidden_marker ]] && [[ $(cat "$hidden_marker" 2>/dev/null) == "$key" ]]; then
+    return 0
+  fi
+
+  [[ $mode == once && -e $used_marker ]] && return 0
+
+  # Throttle. "on-restart" is the friendly default: it may greet again after a
+  # shell restart, an update, or a fresh login, but not more than once per six
+  # hours. "once" only exists to be superseded by the first question, so its
+  # window is short — long enough to swallow a burst of hot reloads.
+  now=$(date +%s)
+  window=300
+  [[ $mode == on-restart ]] && window=21600
+  if [[ -f $last_marker ]]; then
+    last=$(cat "$last_marker" 2>/dev/null || echo 0)
+    [[ $last =~ ^[0-9]+$ ]] || last=0
+    (( now - last < window )) && return 0
+  fi
+
+  mkdir -p -m 0700 "$state_dir"
+  printf '%s\n' "$now" >"$last_marker"
+
+  # The notification service runs this argv without a shell, so name `bash`
+  # explicitly: that keeps the click working however the file mode landed.
+  omarchy-notification-send \
+    --app-name mocchi \
+    -g "$GLYPH" \
+    -u low \
+    "$SUMMARY" \
+    "$DETAIL" \
+    --exec bash "$ask_helper"
+}
+
+case "${1:-show}" in
+  show)
+    shift
+    show "${1:-on-restart}"
+    ;;
+  dismiss)
+    dismiss
+    ;;
+  session)
+    mkdir -p -m 0700 "$state_dir"
+    key=$(session_key)
+    [[ -n $key ]] && printf '%s\n' "$key" >"$hidden_marker"
+    dismiss
+    ;;
+  never)
+    mkdir -p -m 0700 "$state_dir"
+    : >"$off_marker"
+    dismiss
+    ;;
+  restore)
+    rm -f "$off_marker" "$hidden_marker"
+    ;;
+  *)
+    echo "usage: mocchi-greeting <show [mode]|dismiss|session|never|restore>" >&2
+    exit 2
+    ;;
+esac

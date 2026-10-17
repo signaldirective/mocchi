@@ -20,10 +20,11 @@ It stays out of the way until you need it:
   or one that isn't actually installed — Mocchi opens a **free OpenCode session**
   on the Big Pickle model. Nothing is persisted; pick a working agent later and
   Mocchi uses it instead.
-- **Says hello.** On a shell start (a restart, an update, a fresh login) Mocchi
-  shows a small *"Hi, I'm Mocchi! You can ask me anything."* toast. Click the
-  toast and the ask box opens — so people who have never used an agent notice
-  the icon.
+- **Says hello, and takes no for an answer.** On a shell start (a restart, an
+  update, a fresh login) Mocchi shows a small *"Hi, I'm Mocchi! You can ask me
+  anything."* toast. Click the toast and the ask box opens — so people who have
+  never used an agent notice the icon. Right-click the icon to silence it, for
+  this login session or for good.
 - **Ships a real skill.** A merged Omarchy + triage skill is installed into
   OpenCode, so the agent already knows how to help with Omarchy *and* how to
   turn "my computer is doing X" into a report someone can act on.
@@ -102,6 +103,13 @@ the `…/mocchi/instructions.md` entry by hand):
 mv ~/.config/opencode/opencode.json.mocchi.bak ~/.config/opencode/opencode.json
 ```
 
+The greeting keeps its markers outside the plugin too, so the last traces go
+with them:
+
+```bash
+rm -rf ~/.local/state/omarchy/mocchi
+```
+
 ## Use
 
 1. Click the Mocchi icon on the bar.
@@ -120,6 +128,26 @@ small greeting toast. Clicking it opens the same ask box. Control it with the
 | `on-restart` *(default)* | Greet on every shell start, at most once every 6 hours |
 | `once` | Greet until you ask something for the first time, then stop |
 | `off` | Never greet |
+
+### Silencing the greeting
+
+Right-click the icon for a short menu:
+
+| Row | What it does |
+|---|---|
+| **Ask Mocchi** | The same as a left-click |
+| **Hide the greeting until I log out** | Closes the toast and stays quiet for this login session |
+| **Don't show the greeting again** | Closes the toast and sets `greeting` to `off` |
+| **Turn the greeting back on** | Appears in place of the two silences once it is off |
+
+Right-clicking the toast itself simply closes it, which is Omarchy's own
+behaviour for every notification — that is the "not now, ask me again next time"
+option, and it needs no menu at all.
+
+"Until I log out" records the current `$XDG_SESSION_ID`, so a shell restart does
+not bring the greeting back; logging out does. On a session that reports no
+session id, it degrades to an ordinary dismiss rather than a marker that would
+mute Mocchi for longer than you asked.
 
 The bundled skill is wired up on first load. If you would rather Mocchi left
 your agent configuration alone, set `skill` to `off`:
@@ -160,7 +188,22 @@ scripts/mocchi-ask
         └─ no default agent  ──▶  opencode mini --model opencode/big-pickle --prompt "<your question>"
 ```
 
-The bar widget (`BarWidget.qml`) holds no logic beyond launching the helper. All
+The greeting path is its own helper, because the menu has to be able to switch
+it off:
+
+```
+shell start at plugin load ──▶ scripts/mocchi-start ──▶ scripts/mocchi-greeting show <mode>
+right-click "Hide…" / "Don't show…" ──────────────────▶ scripts/mocchi-greeting session | never
+right-click "Turn the greeting back on" ──────────────▶ scripts/mocchi-greeting restore
+```
+
+`mocchi-greeting` is the only code that reads or writes greeting state, so the
+menu and the shell-start path cannot disagree about whether Mocchi may say
+hello. It keeps its markers in `~/.local/state/omarchy/mocchi/`: `last-greeting`
+for the throttle, `used` once you have asked something, and `hidden-session` and
+`greeting-off` for the two silences.
+
+The bar widget (`BarWidget.qml`) holds no logic beyond launching the helpers. All
 of the routing lives in `scripts/mocchi-ask`, which is why a keybinding or a menu
 entry works with no extra wiring.
 
